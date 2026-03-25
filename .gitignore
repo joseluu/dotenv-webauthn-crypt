@@ -1,0 +1,11 @@
+.venv/
+build/
+*.exe
+*.obj
+*.pyd
+*.bin
+__pycache__/
+*.egg-info/
+.env.test
+.env.verify
+debug.log
