@@ -1,6 +1,9 @@
-﻿import os
 from setuptools import setup, Extension
 import pybind11
+import os
+
+# Get version from environment or default
+VERSION = os.environ.get("PROJECT_VERSION", "0.1.4")
 
 ext_modules = [
     Extension(
@@ -9,6 +12,7 @@ ext_modules = [
         include_dirs=[pybind11.get_include()],
         language="c++",
         libraries=["webauthn", "bcrypt", "user32"],
+        define_macros=[('PROJECT_VERSION', f'"{VERSION}"')]
     ),
 ]
 
