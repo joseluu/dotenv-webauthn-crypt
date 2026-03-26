@@ -15,27 +15,22 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install build cibuildwheel
-
       - name: Build wheels
         run: |
           python -m cibuildwheel --output-dir dist
         env:
           CIBW_PLATFORM: windows
           CIBW_SKIP: "*-win32 pp*"
-
       - uses: actions/upload-artifact@v4
         with:
           name: cibw-wheels-${{ matrix.python-version }}
@@ -57,6 +52,9 @@ jobs:
     name: Publish to PyPI
     needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
     if: github.event_name == 'release' && github.event.action == 'published'
     steps:
       - uses: actions/download-artifact@v4
@@ -66,5 +64,3 @@ jobs:
           merge-multiple: true
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
