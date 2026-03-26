@@ -6,16 +6,24 @@ build-backend = "setuptools.build_meta"
 name = "dotenv-webauthn-crypt"
 version = "0.1.0"
 authors = [
-  { name="Author Name", email="author@example.com" },
+  { name="Jose Luu", email="jose.luu@example.com" },
 ]
 description = "Drop-in dotenv replacement with Windows Hello encryption."
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.8"
+dependencies = [
+    "cryptography>=42.0.0",
+]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows",
+    "Topic :: Security :: Cryptography",
 ]
+
+[project.urls]
+"Homepage" = "https://github.com/joseluu/dotenv-webauthn-crypt"
+"Bug Tracker" = "https://github.com/joseluu/dotenv-webauthn-crypt/issues"
 
 [tool.setuptools]
 packages = ["dotenv_webauthn_crypt"]

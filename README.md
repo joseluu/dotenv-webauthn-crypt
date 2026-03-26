@@ -16,7 +16,7 @@
 
 ### Prerequisites
 -   **Windows 10/11** with Windows Hello enabled.
--   **Visual Studio 2022 Build Tools** (for C++ compilation).
+-   **Visual Studio 2022 Build Tools** (only if building from source).
 
 ```powershell
 pip install dotenv-webauthn-crypt
@@ -52,6 +52,12 @@ print(os.environ.get("MY_SECRET_KEY"))
 1.  **Registration**: `init` creates a non-resident public/private key pair in the TPM. The `CredentialID` is saved locally.
 2.  **Encryption**: A `VaultKey` is derived using HKDF from a TPM-backed signature and the file's canonical path.
 3.  **Loading**: `load_dotenv` detects `ENC:` prefixes, triggers Windows Hello to get a fresh signature, re-derives the `VaultKey`, and decrypts the values into `os.environ`.
+
+## 📝 TODO / Roadmap
+
+- [ ] **Linux Support**: Implement a Linux backend using the **TPM2-TSS** or **libfido2** for similar biometric/hardware protection.
+- [ ] **macOS Support**: Implement a macOS backend using **Secure Enclave / Touch ID**.
+- [ ] **Credential Rotation**: Add `rekey` command to migrate between hardware credentials.
 
 ## ⚖️ License
 
