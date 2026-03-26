@@ -8,6 +8,9 @@ on:
   release:
     types: [ published ]
 
+permissions:
+  id-token: write # Global permission level
+
 jobs:
   build_wheels:
     name: Build wheels on Windows
