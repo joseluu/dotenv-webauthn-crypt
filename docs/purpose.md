@@ -5,14 +5,16 @@
 Provide a **drop-in replacement for dotenv** that:
 - Transparently loads environment variables 
 - Stores secrets **encrypted at rest** 
-- Uses **Windows Hello (TPM-backed)** for access control 
+- Uses the **WebAuthn (W3C standard) API** for secure, hardware-backed access control
 - Requires **user presence (biometric/PIN)** to decrypt 
 
-# 2️⃣ 🧠 Core Design Principles
-### ✔ Security
-- No plaintext secrets stored on disk 
-- Private keys never leave TPM 
-- All decryption gated by Windows Hello 
+# 2️⃣ 🧠 Why WebAuthn vs. Windows Hello?
+- **WebAuthn (W3C Standard)**: This is the protocol we implement. It is an open, cross-platform standard that allows us to interact with various authenticators.
+- **Windows Hello (Platform Authenticator)**: This is the specific implementation of WebAuthn on Windows. By targeting the WebAuthn API, our module is future-proofed to support other hardware-backed authenticators (Security Keys like YubiKey, macOS TouchID, Linux TPM) in future releases.
+- **Advantages**: 
+  - **Interoperability**: Not locked to a single vendor.
+  - **Security**: Decouples the authentication request from the underlying device security (TPM vs. FIDO2 security key).
+  - **Flexibility**: Allows the user to choose their preferred hardware-backed authenticator. 
 ### ✔ Simplicity
 - Compatible with existing `.env` workflows 
 - Minimal user friction 
