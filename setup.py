@@ -3,7 +3,7 @@ import pybind11
 import os
 
 # Get version from environment or default
-VERSION = os.environ.get("PROJECT_VERSION", "0.1.4")
+VERSION = os.environ.get("PROJECT_VERSION", "0.1.6")
 
 ext_modules = [
     Extension(
