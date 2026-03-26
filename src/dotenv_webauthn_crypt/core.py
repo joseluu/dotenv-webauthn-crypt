@@ -1,6 +1,7 @@
 ﻿import os
 import base64
 import hashlib
+from datetime import datetime
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
@@ -10,7 +11,7 @@ from . import _native
 # Configuration
 RP_ID = "credentials.dotenv-webauthn.com"
 DATA_DIR = os.path.join(os.environ.get("LOCALAPPDATA", ""), "dotenv-webauthn")
-CREDENTIAL_FILE = os.path.join(DATA_DIR, "credential.bin")
+CREDENTIAL_FILE = os.path.join(DATA_DIR, "credential_id.txt")
 
 def ensure_data_dir():
     if not os.path.exists(DATA_DIR):
@@ -18,26 +19,32 @@ def ensure_data_dir():
 
 def init_credential(user_name: str = "default_user"):
     ensure_data_dir()
+    if os.path.exists(CREDENTIAL_FILE):
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+        backup_name = f"credential_id_{timestamp}.txt"
+        backup_path = os.path.join(DATA_DIR, backup_name)
+        os.rename(CREDENTIAL_FILE, backup_path)
+        print(f"WARNING: Existing credential backed up to {backup_path}")
     credential_id = _native.make_credential(RP_ID, user_name)
-    with open(CREDENTIAL_FILE, "wb") as f:
-        f.write(bytes(credential_id))
+    encoded = base64.b64encode(bytes(credential_id)).decode('utf-8')
+    with open(CREDENTIAL_FILE, "w") as f:
+        f.write(encoded)
     print(f"Root credential initialized and saved to {CREDENTIAL_FILE}")
 
 def get_root_credential_id() -> bytes:
     if not os.path.exists(CREDENTIAL_FILE):
         raise FileNotFoundError("Root credential not found. Run 'init' first.")
-    with open(CREDENTIAL_FILE, "rb") as f:
-        return f.read()
+    with open(CREDENTIAL_FILE, "r") as f:
+        return base64.b64decode(f.read().strip())
 
 def get_master_key() -> bytes:
     credential_id = get_root_credential_id()
-    # Challenge can be fixed as per design docs/purpose.md
-    challenge = b"dotenv-webauthn-fixed-challenge"
-    # Ensure challenge is 32 bytes for consistency with native
-    challenge_hash = hashlib.sha256(challenge).digest()
-    
-    signature = _native.get_assertion(RP_ID, list(credential_id), list(challenge_hash))
-    return hashlib.sha256(bytes(signature)).digest()
+    # Fixed 32-byte salt for PRF/hmac-secret (raw HMAC secret values)
+    salt = hashlib.sha256(b"dotenv-webauthn-prf-salt-v1").digest()
+
+    # get_assertion now returns the deterministic HMAC secret (32 bytes)
+    prf_output = _native.get_assertion(RP_ID, list(credential_id), list(salt))
+    return bytes(prf_output)
 
 def get_vault_key(env_path: str, master_key: bytes) -> bytes:
     vault_id = hashlib.sha256(os.path.abspath(env_path).encode()).digest()
@@ -109,7 +116,9 @@ def load_dotenv(dotenv_path: str = ".env"):
                 try:
                     os.environ[key] = decrypt_value(value, vault_key)
                 except Exception as e:
+                    import traceback
                     print(f"Failed to decrypt {key}: {e}")
+                    traceback.print_exc()
             else:
                 os.environ[key] = value
 

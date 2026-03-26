@@ -1,3 +1,4 @@
+import os
 import sys
 import argparse
 import importlib.metadata
@@ -10,10 +11,11 @@ def main():
     parser.add_argument("--user", help="User name for init", default="default_user")
     
     args = parser.parse_args()
-    
+
+    version = importlib.metadata.version("dotenv-webauthn-crypt")
+    print(f"dotenv-webauthn-crypt v{version}")
+
     if args.command == "version":
-        version = importlib.metadata.version("dotenv-webauthn-crypt")
-        print(f"dotenv-webauthn-crypt version {version}")
         sys.exit(0)
 
     try:
@@ -23,7 +25,11 @@ def main():
             encrypt_file(args.env_path)
         elif args.command == "decrypt":
             load_dotenv(args.env_path)
-            print("Loaded (decrypted) variables into environment.")
+            for line in open(args.env_path, "r"):
+                if "=" in line:
+                    key, _ = line.strip().split("=", 1)
+                    if key in os.environ:
+                        print(f"{key}={os.environ[key]}")
         else:
             print(f"Command '{args.command}' not yet implemented.")
     except Exception as e:
