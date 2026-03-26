@@ -1,4 +1,4 @@
-import unittest
+﻿import unittest
 from dotenv_webauthn_crypt.core import get_vault_key
 
 class TestCore(unittest.TestCase):

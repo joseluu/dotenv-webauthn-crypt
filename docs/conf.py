@@ -1,4 +1,4 @@
-# Configuration file for the Sphinx documentation builder.
+﻿# Configuration file for the Sphinx documentation builder.
 
 project = 'dotenv-webauthn-crypt'
 copyright = '2026, Jose Luu'

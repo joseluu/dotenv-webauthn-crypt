@@ -1,6 +1,6 @@
-# GEMINI.md - Project Context
+﻿# GEMINI.md - Project Context
 
-## 🚀 Project Overview
+##  Project Overview
 `dotenv-webauthn-crypt` is a drop-in replacement for the traditional `dotenv` library, designed to enhance security for environment variables on Windows systems. It transparently loads environment variables while keeping secrets **encrypted at rest**, protected by **Windows Hello (TPM-backed)**.
 
 ### Key Technologies
@@ -20,7 +20,7 @@
 
 ---
 
-## 🏗 Building and Running
+##  Building and Running
 
 ### Prerequisites
 - **Windows 10/11** with a functional TPM and Windows Hello (PIN/Biometric) set up.
@@ -42,7 +42,7 @@ cl.exe /EHsc ext/harness.cpp /link webauthn.lib user32.lib /OUT:harness.exe
 
 ---
 
-## 🧪 Testing
+##  Testing
 
 ### Python Tests
 Run the core logic tests (key derivation, etc.):
@@ -58,14 +58,14 @@ Run the compiled `harness.exe` to verify Windows Hello interaction:
 
 ---
 
-## 🔑 Key Management Strategy
+##  Key Management Strategy
 - **Root Credential**: Stored at `%LOCALAPPDATA%\dotenv-webauthn\credential.bin`. It contains the `credential_id` created via WebAuthn.
 - **Master Key**: Derived via `SHA256(WebAuthnSignature)`.
 - **Vault Key**: Derived via `HKDF(MasterKey, salt=SHA256(env_path), info="dotenv-webauthn-v1")`.
 
 ---
 
-## 🐍 Python API Usage
+##  Python API Usage
 ```python
 from dotenv_webauthn_crypt import load_dotenv
 
@@ -78,7 +78,7 @@ load_dotenv()
 
 ---
 
-## ⚙️ CLI Tool
+##  CLI Tool
 Invoked via: `python -m dotenv_webauthn_crypt`
 
 ### Commands (Implementation Status)
@@ -89,7 +89,7 @@ Invoked via: `python -m dotenv_webauthn_crypt`
 
 ---
 
-## 🧩 Development Conventions
+##  Development Conventions
 - **Naming**: Always use `webauthn` (not `webauth`) for consistency.
 - **Native Code**: The C++ module (`ext/native.cpp`) is the interface to `webauthn.h`.
 - **Error Handling**: `HRESULT` from Windows APIs must be correctly interpreted. `0x80090027` (NTE_INVALID_PARAMETER) and `0x800704c7` (ERROR_CANCELLED) are common during development.

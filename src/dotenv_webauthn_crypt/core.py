@@ -1,4 +1,4 @@
-import os
+﻿import os
 import base64
 import hashlib
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM

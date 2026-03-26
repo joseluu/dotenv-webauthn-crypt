@@ -1,10 +1,10 @@
-[build-system]
+﻿[build-system]
 requires = ["setuptools>=61.0", "pybind11"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "dotenv-webauthn-crypt"
-version = "0.1.0"
+version = "0.1.2"
 authors = [
   { name="Jose Luu", email="jose.luu@example.com" },
 ]
@@ -31,3 +31,4 @@ dotenv-webauthn-crypt-cli = "dotenv_webauthn_crypt.cli:main"
 [tool.setuptools]
 packages = ["dotenv_webauthn_crypt"]
 package-dir = {"" = "src"}
+

@@ -1,23 +1,23 @@
-Welcome to dotenv-webauthn-crypt's documentation!
+﻿Welcome to dotenv-webauthn-crypt's documentation!
 ================================================
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
-🚀 Introduction
+ Introduction
 --------------
 
 ``dotenv-webauthn-crypt`` is a drop-in replacement for ``python-dotenv`` that enhances security by keeping environment variables encrypted at rest and gating access behind **Windows Hello (Biometrics/PIN)**.
 
-🛠 Installation
+ Installation
 --------------
 
 .. code-block:: powershell
 
    pip install dotenv-webauthn-crypt
 
-📖 Usage
+ Usage
 --------
 
 Initialization
@@ -46,7 +46,7 @@ Python API
    from dotenv_webauthn_crypt import load_dotenv
    load_dotenv()
 
-🔒 Security Model
+ Security Model
 ----------------
 
 1. **Root Credential**: Stored in the Windows TPM via WebAuthn.
@@ -59,3 +59,5 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
+
+

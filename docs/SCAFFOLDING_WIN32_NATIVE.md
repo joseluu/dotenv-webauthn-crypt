@@ -1,7 +1,7 @@
-# Scaffolding a Native Win32 C++ Extension for Python
+﻿# Scaffolding a Native Win32 C++ Extension for Python
 
 This document summarizes the toolchain, build setup, and key techniques used to
-build the native C++ component of **dotenv-webauthn-crypt** — a Windows Hello-backed
+build the native C++ component of **dotenv-webauthn-crypt**  a Windows Hello-backed
 security module with no runtime dependencies beyond Windows itself and the Python bridge.
 
 ## Toolchain
@@ -10,9 +10,9 @@ security module with no runtime dependencies beyond Windows itself and the Pytho
 |---|---|
 | Compiler | MSVC `cl.exe` 14.43.34808 (C++ 17) |
 | Linker | MSVC `link.exe` (same version) |
-| Toolchain install | VS 2022 **Build Tools** — `C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.43.34808` |
-| Windows SDK | 10.0.22621.0 — `C:/Program Files (x86)/Windows Kits/10` |
-| Python Bridge | **pybind11** — handles C++ to Python type conversion |
+| Toolchain install | VS 2022 **Build Tools**  `C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.43.34808` |
+| Windows SDK | 10.0.22621.0  `C:/Program Files (x86)/Windows Kits/10` |
+| Python Bridge | **pybind11**  handles C++ to Python type conversion |
 
 ### Why Build Tools, not Visual Studio IDE?
 
@@ -88,4 +88,4 @@ of the active terminal or IDE.
    with the "Desktop development with C++" workload.
 2. Ensure Python 3.8+ is installed.
 3. Run `pip install .` in the project root.
-4. Output: `src/dotenv_webauthn_crypt/_native.cp312-win_amd64.pyd` — the native module.
+4. Output: `src/dotenv_webauthn_crypt/_native.cp312-win_amd64.pyd`  the native module.
