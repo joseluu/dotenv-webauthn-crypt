@@ -25,6 +25,9 @@ classifiers = [
 "Homepage" = "https://github.com/joseluu/dotenv-webauthn-crypt"
 "Bug Tracker" = "https://github.com/joseluu/dotenv-webauthn-crypt/issues"
 
+[project.scripts]
+dotenv-webauthn-crypt-cli = "dotenv_webauthn_crypt.cli:main"
+
 [tool.setuptools]
 packages = ["dotenv_webauthn_crypt"]
 package-dir = {"" = "src"}

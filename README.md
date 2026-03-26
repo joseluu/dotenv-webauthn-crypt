@@ -27,13 +27,13 @@ pip install dotenv-webauthn-crypt
 ### 1. Initialize your machine
 Create your machine-specific root credential in the TPM:
 ```powershell
-python -m dotenv_webauthn_crypt.cli init --user MyWindowsUser
+dotenv-webauthn-crypt-cli init --user MyWindowsUser
 ```
 
 ### 2. Encrypt an existing .env file
 This will replace plaintext values with encrypted `ENC:...` blobs:
 ```powershell
-python -m dotenv_webauthn_crypt.cli encrypt .env
+dotenv-webauthn-crypt-cli encrypt .env
 ```
 
 ### 3. Load in your Python code

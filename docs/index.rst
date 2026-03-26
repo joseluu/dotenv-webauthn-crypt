@@ -27,7 +27,7 @@ Create your machine-specific root credential in the TPM:
 
 .. code-block:: powershell
 
-   python -m dotenv_webauthn_crypt.cli init --user MyWindowsUser
+   dotenv-webauthn-crypt-cli init --user MyWindowsUser
 
 Encryption
 ~~~~~~~~~~
@@ -36,7 +36,7 @@ Encrypt an existing ``.env`` file:
 
 .. code-block:: powershell
 
-   python -m dotenv_webauthn_crypt.cli encrypt .env
+   dotenv-webauthn-crypt-cli encrypt .env
 
 Python API
 ~~~~~~~~~~
