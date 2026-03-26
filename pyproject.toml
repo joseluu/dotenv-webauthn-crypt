@@ -1,4 +1,4 @@
-﻿[build-system]
+[build-system]
 requires = ["setuptools>=61.0", "pybind11"]
 build-backend = "setuptools.build_meta"
 
@@ -32,3 +32,9 @@ dotenv-webauthn-crypt-cli = "dotenv_webauthn_crypt.cli:main"
 packages = ["dotenv_webauthn_crypt"]
 package-dir = {"" = "src"}
 
+[tool.cibuildwheel]
+build = "cp38-* cp39-* cp310-* cp311-* cp312-*"
+skip = "*-win32 pp*"
+
+[tool.cibuildwheel.windows]
+before-build = "pip install pybind11"
