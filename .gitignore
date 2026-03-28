@@ -11,3 +11,4 @@ __pycache__/
 .env.verify
 debug.log
 .claude
+pypi_token.txt

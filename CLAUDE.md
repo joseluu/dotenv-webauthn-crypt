@@ -82,9 +82,9 @@ load_dotenv()
 Invoked via: `python -m dotenv_webauthn_crypt`
 
 ### Commands (Implementation Status)
-- `init`: (TODO) Create root credential in AppData.
-- `encrypt`: (TODO) Encrypt a plaintext `.env` into `.env.vault`.
-- `decrypt`: (TODO) Decrypt a vault and output plaintext.
+- `init`: Create root credential in AppData.
+- `encrypt`: Encrypt a plaintext `.env` file into itself `.env`.
+- `decrypt`: Decrypt a vault and output plaintext.
 - `rekey`: (TODO) Rotate credentials.
 
 ---
@@ -93,4 +93,5 @@ Invoked via: `python -m dotenv_webauthn_crypt`
 - **Naming**: Always use `webauthn` (not `webauth`) for consistency.
 - **Native Code**: The C++ module (`ext/native.cpp`) is the interface to `webauthn.h`.
 - **Error Handling**: `HRESULT` from Windows APIs must be correctly interpreted. `0x80090027` (NTE_INVALID_PARAMETER) and `0x800704c7` (ERROR_CANCELLED) are common during development.
-- **Security**: Never log or print the Master Key, Vault Key, or Plaintext secrets.
+- **Security**: Never log or print Plaintext secrets.
+- **Version numbering**: once automatic and manual tests are passed bump minor version (x) to 0.1.x in the toml file in the ext/native.cpp and in the setup.py , commit and push, tag v0.1.x push tag
