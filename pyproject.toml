@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dotenv-webauthn-crypt"
-version = "0.2.1"
+version = "0.3.0a0"
 authors = [
   { name="Jose Luu", email="jose.luu@example.com" },
 ]
@@ -13,6 +13,8 @@ readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
     "cryptography>=42.0.0",
+    "ecdsa>=0.18.0",
+    "cbor2>=5.0.0",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

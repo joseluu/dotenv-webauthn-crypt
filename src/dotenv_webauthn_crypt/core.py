@@ -1,11 +1,15 @@
 ﻿import os
 import base64
 import hashlib
+import struct
 from datetime import datetime
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
+from ecdsa import NIST256p, VerifyingKey
+from ecdsa.util import sigdecode_der
+import cbor2
 from . import _native
 
 # Configuration
@@ -17,6 +21,56 @@ def ensure_data_dir():
     if not os.path.exists(DATA_DIR):
         os.makedirs(DATA_DIR)
 
+FIXED_CHALLENGE = hashlib.sha256(b"dotenv-webauthn-fixed-challenge-v2").digest()
+
+def _parse_public_key_from_authenticator_data(auth_data: bytes) -> tuple:
+    """Parse authenticatorData to extract the COSE public key (x, y) coordinates.
+
+    AuthenticatorData format:
+      32 bytes  rpIdHash
+       1 byte   flags
+       4 bytes  signCount
+      If flags & 0x40 (AT flag set):
+        16 bytes  AAGUID
+         2 bytes  credentialIdLength (big-endian)
+         N bytes  credentialId
+         M bytes  COSE_Key (CBOR-encoded)
+    """
+    offset = 32  # rpIdHash
+    flags = auth_data[offset]
+    offset += 1 + 4  # flags + signCount
+
+    if not (flags & 0x40):
+        raise ValueError("No attested credential data in authenticatorData")
+
+    offset += 16  # AAGUID
+    cred_id_len = struct.unpack('>H', auth_data[offset:offset + 2])[0]
+    offset += 2 + cred_id_len  # credentialIdLength + credentialId
+
+    # Remaining bytes are COSE_Key (CBOR)
+    cose_key = cbor2.loads(auth_data[offset:])
+    # COSE_Key for P-256: {1: 2, 3: -7, -1: 1, -2: x(32 bytes), -3: y(32 bytes)}
+    x = cose_key[-2]  # x coordinate
+    y = cose_key[-3]  # y coordinate
+    return x, y
+
+def _recover_public_key(signature: bytes, authenticator_data: bytes, challenge: bytes, y_parity: int) -> bytes:
+    """Recover the ECDSA public key from a WebAuthn assertion signature.
+
+    Returns the uncompressed public key bytes (65 bytes: 0x04 || x || y).
+    Selects the candidate whose y coordinate parity matches y_parity.
+    """
+    client_data_hash = hashlib.sha256(challenge).digest()
+    signed_data = authenticator_data + client_data_hash
+    candidates = VerifyingKey.from_public_key_recovery(
+        signature, signed_data, NIST256p,
+        hashfunc=hashlib.sha256, sigdecode=sigdecode_der
+    )
+    for candidate in candidates:
+        if candidate.pubkey.point.y() % 2 == y_parity:
+            return candidate.to_string("uncompressed")
+    raise ValueError("No candidate matches the expected y_parity")
+
 def init_credential(user_name: str = "default_user"):
     ensure_data_dir()
     if os.path.exists(CREDENTIAL_FILE):
@@ -25,26 +79,43 @@ def init_credential(user_name: str = "default_user"):
         backup_path = os.path.join(DATA_DIR, backup_name)
         os.rename(CREDENTIAL_FILE, backup_path)
         print(f"WARNING: Existing credential backed up to {backup_path}")
-    credential_id = _native.make_credential(RP_ID, user_name)
-    encoded = base64.b64encode(bytes(credential_id)).decode('utf-8')
+
+    # Create credential — returns credential_id + authenticatorData (contains public key)
+    result = _native.make_credential(RP_ID, user_name)
+    credential_id = bytes(result["credential_id"])
+    auth_data = bytes(result["authenticator_data"])
+
+    # Extract public key from authenticatorData to determine y_parity
+    x, y = _parse_public_key_from_authenticator_data(auth_data)
+    y_parity = y[-1] & 1  # last byte's LSB = parity of y coordinate
+
+    # Store credential_id (base64) and y_parity
+    encoded = base64.b64encode(credential_id).decode('utf-8')
     with open(CREDENTIAL_FILE, "w") as f:
-        f.write(encoded)
+        f.write(f"{encoded}\n{y_parity}\n")
     print(f"Root credential initialized and saved to {CREDENTIAL_FILE}")
 
-def get_root_credential_id() -> bytes:
+def _read_credential_file():
+    """Read credential_id and y_parity from credential file."""
     if not os.path.exists(CREDENTIAL_FILE):
         raise FileNotFoundError("Root credential not found. Run 'init' first.")
     with open(CREDENTIAL_FILE, "r") as f:
-        return base64.b64decode(f.read().strip())
+        lines = f.read().strip().split('\n')
+    credential_id = base64.b64decode(lines[0])
+    y_parity = int(lines[1]) if len(lines) > 1 else 0
+    return credential_id, y_parity
 
 def get_master_key() -> bytes:
-    credential_id = get_root_credential_id()
-    # Fixed 32-byte salt for PRF/hmac-secret (raw HMAC secret values)
-    salt = hashlib.sha256(b"dotenv-webauthn-prf-salt-v1").digest()
+    credential_id, y_parity = _read_credential_file()
 
-    # get_assertion now returns the deterministic HMAC secret (32 bytes)
-    prf_output = _native.get_assertion(RP_ID, list(credential_id), list(salt))
-    return bytes(prf_output)
+    # Get assertion — user must authenticate (biometric/PIN)
+    result = _native.get_assertion(RP_ID, list(credential_id), list(FIXED_CHALLENGE))
+    signature = bytes(result["signature"])
+    auth_data = bytes(result["authenticator_data"])
+
+    # Recover public key from signature (never stored on disk)
+    pubkey = _recover_public_key(signature, auth_data, bytes(FIXED_CHALLENGE), y_parity)
+    return hashlib.sha256(pubkey).digest()
 
 def get_vault_key(env_path: str, master_key: bytes) -> bytes:
     vault_id = hashlib.sha256(os.path.abspath(env_path).encode()).digest()
