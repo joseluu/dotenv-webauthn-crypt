@@ -12,3 +12,4 @@ __pycache__/
 debug.log
 .claude
 pypi_token.txt
+firefox-webauthn-sign-ext/

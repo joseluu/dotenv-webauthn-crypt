@@ -12,7 +12,8 @@ def main():
     
     args = parser.parse_args()
 
-    version = importlib.metadata.version("dotenv-webauthn-crypt")
+    from . import _webauthn
+    version = _webauthn.get_version()
     print(f"dotenv-webauthn-crypt v{version}")
 
     if args.command == "version":

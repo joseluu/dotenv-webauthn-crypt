@@ -10,7 +10,7 @@ from cryptography.hazmat.backends import default_backend
 from ecdsa import NIST256p, VerifyingKey
 from ecdsa.util import sigdecode_der
 import cbor2
-from . import _native
+from . import _webauthn
 
 # Configuration
 RP_ID = "credentials.dotenv-webauthn.com"
@@ -81,7 +81,7 @@ def init_credential(user_name: str = "default_user"):
         print(f"WARNING: Existing credential backed up to {backup_path}")
 
     # Create credential — returns credential_id + authenticatorData (contains public key)
-    result = _native.make_credential(RP_ID, user_name)
+    result = _webauthn.make_credential(RP_ID, user_name)
     credential_id = bytes(result["credential_id"])
     auth_data = bytes(result["authenticator_data"])
 
@@ -109,7 +109,7 @@ def get_master_key() -> bytes:
     credential_id, y_parity = _read_credential_file()
 
     # Get assertion — user must authenticate (biometric/PIN)
-    result = _native.get_assertion(RP_ID, list(credential_id), list(FIXED_CHALLENGE))
+    result = _webauthn.get_assertion(RP_ID, list(credential_id), list(FIXED_CHALLENGE))
     signature = bytes(result["signature"])
     auth_data = bytes(result["authenticator_data"])
 

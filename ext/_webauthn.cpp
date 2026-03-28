@@ -8,7 +8,7 @@
 
 // The version is injected at build time by setup.py
 #ifndef PROJECT_VERSION
-#define PROJECT_VERSION "0.3.0a3"
+#define PROJECT_VERSION "0.3.0a5"
 #endif
 
 namespace py = pybind11;
@@ -56,7 +56,7 @@ py::dict make_credential(const std::string& rp_id, const std::string& user_name)
     WEBAUTHN_AUTHENTICATOR_MAKE_CREDENTIAL_OPTIONS options = { 0 };
     options.dwVersion = WEBAUTHN_AUTHENTICATOR_MAKE_CREDENTIAL_OPTIONS_CURRENT_VERSION;
     options.dwTimeoutMilliseconds = 60000;
-    options.dwAuthenticatorAttachment = WEBAUTHN_AUTHENTICATOR_ATTACHMENT_CROSS_PLATFORM;
+    options.dwAuthenticatorAttachment = WEBAUTHN_AUTHENTICATOR_ATTACHMENT_PLATFORM;
     options.bRequireResidentKey = FALSE;
     options.dwUserVerificationRequirement = WEBAUTHN_USER_VERIFICATION_REQUIREMENT_REQUIRED;
     options.dwAttestationConveyancePreference = WEBAUTHN_ATTESTATION_CONVEYANCE_PREFERENCE_NONE;
@@ -125,7 +125,7 @@ std::string get_version() {
     return PROJECT_VERSION;
 }
 
-PYBIND11_MODULE(_native, m) {
+PYBIND11_MODULE(_webauthn, m) {
     m.def("get_version", &get_version, "Get native module version");
     m.def("make_credential", &make_credential, "Create a WebAuthn credential (non-resident)");
     m.def("get_assertion", &get_assertion, "Get WebAuthn assertion (signature)");

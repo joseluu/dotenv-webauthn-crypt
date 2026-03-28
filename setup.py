@@ -3,12 +3,12 @@ import pybind11
 import os
 
 # Get version from environment or default
-VERSION = os.environ.get("PROJECT_VERSION", "0.3.0a3")
+VERSION = os.environ.get("PROJECT_VERSION", "0.3.0a5")
 
 ext_modules = [
     Extension(
-        "dotenv_webauthn_crypt._native",
-        ["ext/native.cpp"],
+        "dotenv_webauthn_crypt._webauthn",
+        ["ext/_webauthn.cpp"],
         include_dirs=[pybind11.get_include()],
         language="c++",
         libraries=["webauthn", "bcrypt", "user32"],

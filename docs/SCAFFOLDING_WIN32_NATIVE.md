@@ -30,16 +30,16 @@ directly with the Python ecosystem. The build process is orchestrated by
 1. **Detection**: `setuptools` locates the MSVC compiler on the system.
 2. **Include Paths**: `pybind11.get_include()` is used to provide the necessary
    headers for the Python/C++ interface.
-3. **Compilation**: `cl.exe` compiles `ext/native.cpp` into a machine-code object.
+3. **Compilation**: `cl.exe` compiles `ext/_webauthn.cpp` into a machine-code object.
 4. **Linking**: `link.exe` links against the required Windows System libraries
-   (see below) to produce the final `_native.pyd` (a DLL with a Python-compatible entry point).
+   (see below) to produce the final `_webauthn.pyd` (a DLL with a Python-compatible entry point).
 
 ## Python Interface: pybind11
 
 The interface between Python and C++ is handled by `pybind11`, which eliminates
 the need for manual C-API boilerplate.
 
-- **Module Definition**: `PYBIND11_MODULE(_native, m)` defines the extension name.
+- **Module Definition**: `PYBIND11_MODULE(_webauthn, m)` defines the extension name.
 - **Function Mapping**: `m.def("make_credential", ...)` exposes C++ functions
   directly to Python.
 - **Type Conversion**: `pybind11/stl.h` is used to automatically convert
@@ -88,4 +88,4 @@ of the active terminal or IDE.
    with the "Desktop development with C++" workload.
 2. Ensure Python 3.8+ is installed.
 3. Run `pip install .` in the project root.
-4. Output: `src/dotenv_webauthn_crypt/_native.cp312-win_amd64.pyd`  the native module.
+4. Output: `src/dotenv_webauthn_crypt/_webauthn.cp312-win_amd64.pyd`  the native module.

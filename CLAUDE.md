@@ -11,7 +11,7 @@
 
 ### Architecture
 1.  **Python App** calls `load_dotenv()`.
-2.  **`dotenv_webauthn_crypt`** (Python) triggers the **pybind11 native module** (`_native`).
+2.  **`dotenv_webauthn_crypt`** (Python) triggers the **pybind11 native module** (`_webauthn`).
 3.  **Windows WebAuthn API** prompts the user via **Windows Hello**.
 4.  A **TPM-backed private key** signs a challenge.
 5.  The resulting signature is used to derive a **Master Key**.
@@ -37,7 +37,7 @@ pip install .
 To compile the standalone native test harness for debugging WebAuthn calls:
 ```powershell
 & "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-cl.exe /EHsc ext/harness.cpp /link webauthn.lib user32.lib /OUT:harness.exe
+cl.exe /EHsc ext/test_webauthn.cpp /link webauthn.lib user32.lib /OUT:test_webauthn.exe
 ```
 
 ---
@@ -91,7 +91,7 @@ Invoked via: `python -m dotenv_webauthn_crypt`
 
 ##  Development Conventions
 - **Naming**: Always use `webauthn` (not `webauth`) for consistency.
-- **Native Code**: The C++ module (`ext/native.cpp`) is the interface to `webauthn.h`.
+- **Native Code**: The C++ module (`ext/_webauthn.cpp`) is the interface to `webauthn.h`.
 - **Error Handling**: `HRESULT` from Windows APIs must be correctly interpreted. `0x80090027` (NTE_INVALID_PARAMETER) and `0x800704c7` (ERROR_CANCELLED) are common during development.
 - **Security**: Never log or print Plaintext secrets.
-- **Version numbering**: once automatic and manual tests are passed bump minor version (x) to 0.1.x in the toml file in the ext/native.cpp and in the setup.py , commit and push, tag v0.1.x push tag
+- **Version numbering**: once automatic and manual tests are passed bump minor version (x) to 0.1.x in the toml file in the ext/_webauthn.cpp and in the setup.py , commit and push, tag v0.1.x push tag

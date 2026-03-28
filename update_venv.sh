@@ -14,7 +14,7 @@ echo "Building native extension..."
 "$VENV_PYTHON" setup.py build_ext --inplace
 
 # Find the built .pyd for the venv's Python version
-PYD=$(find "$SCRIPT_DIR/build" -path "*/dotenv_webauthn_crypt/_native.cp*-win_amd64.pyd" -newer "$SCRIPT_DIR/ext/native.cpp" | head -1)
+PYD=$(find "$SCRIPT_DIR/build" -path "*/dotenv_webauthn_crypt/_webauthn.cp*-win_amd64.pyd" -newer "$SCRIPT_DIR/ext/_webauthn.cpp" | head -1)
 
 if [[ -z "$PYD" ]]; then
     echo "Error: no freshly built .pyd found" >&2
