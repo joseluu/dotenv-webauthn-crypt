@@ -16,7 +16,7 @@
 
 // The version is injected at build time by setup.py
 #ifndef PROJECT_VERSION
-#define PROJECT_VERSION "0.3.0a6"
+#define PROJECT_VERSION "0.3.0a7"
 #endif
 
 namespace py = pybind11;

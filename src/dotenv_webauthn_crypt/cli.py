@@ -38,7 +38,8 @@ def main():
     parser = argparse.ArgumentParser(description="dotenv-webauthn-crypt CLI")
     parser.add_argument("command", choices=["encrypt", "decrypt", "init", "info", "rekey", "version"])
     parser.add_argument("env_path", nargs="?", default=".env")
-    parser.add_argument("--user", help="User name for init", default="default_user")
+    parser.add_argument("--user", help="User name for init (default: Windows username)",
+                        default=os.environ.get("USERNAME", "default_user"))
     parser.add_argument("--device", choices=["local", "phone", "usb"],
                         default=None,
                         help="Authentication device: local (Windows Hello), phone (QR code), usb (security key)")

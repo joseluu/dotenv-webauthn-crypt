@@ -28,10 +28,11 @@ pip install dotenv-webauthn-crypt
 
 ### 1. Check available devices
 
-Running `init` without `--device` shows a diagnostic report and available options:
+Running `init` without `--device` shows a diagnostic report and available options.
+`--user` defaults to your Windows username if not specified:
 
 ```powershell
-dotenv-webauthn-crypt-cli init --user MyUser
+dotenv-webauthn-crypt-cli init
 ```
 
 Output:
@@ -59,20 +60,24 @@ Output:
 
 ### 2. Initialize with your chosen device
 
-```powershell
-# Windows Hello (fingerprint/PIN)
-dotenv-webauthn-crypt-cli init --device local --user MyUser
+`--user` defaults to your Windows username (`%USERNAME%`) if omitted:
 
-# Smartphone via QR code
+```powershell
+# Windows Hello (fingerprint/PIN) — uses Windows username
+dotenv-webauthn-crypt-cli init --device local
+
+# Smartphone via QR code — custom user name
 dotenv-webauthn-crypt-cli init --device phone --user MyUser
 
 # USB security key
-dotenv-webauthn-crypt-cli init --device usb --user MyUser
+dotenv-webauthn-crypt-cli init --device usb
 ```
 
 ### 3. Encrypt an existing .env file
+
+If no file is specified, defaults to `.env` in the current directory:
 ```powershell
-dotenv-webauthn-crypt-cli encrypt .env
+dotenv-webauthn-crypt-cli encrypt
 ```
 
 The encrypted file includes a recovery header with credential metadata:
