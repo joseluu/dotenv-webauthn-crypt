@@ -71,6 +71,31 @@ of the active terminal or IDE.
 |---|---|---|
 | [pybind11](https://github.com/pybind/pybind11) | BSD-style | Used as a build-time dependency to generate the Python extension. |
 
+## Building the Standalone Test Harness
+
+`ext/test_webauthn.cpp` is a standalone C++ executable for testing WebAuthn API
+calls outside of Python. Build it from Git Bash:
+
+```bash
+MSVC_ROOT="C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.43.34808"
+WINSDK="C:/Program Files (x86)/Windows Kits/10"
+SDKVER="10.0.22621.0"
+CL="$MSVC_ROOT/bin/Hostx64/x64/cl.exe"
+LINK="$MSVC_ROOT/bin/Hostx64/x64/link.exe"
+export PATH="$MSVC_ROOT/bin/Hostx64/x64:$PATH"
+export INCLUDE="$MSVC_ROOT/include;$WINSDK/Include/$SDKVER/ucrt;$WINSDK/Include/$SDKVER/um;$WINSDK/Include/$SDKVER/shared"
+export LIB="$MSVC_ROOT/lib/x64;$WINSDK/Lib/$SDKVER/ucrt/x64;$WINSDK/Lib/$SDKVER/um/x64"
+
+mkdir -p build
+"$CL" /EHsc /nologo /Z7 /c ext/test_webauthn.cpp /Fo:build/test_webauthn.obj
+"$LINK" /nologo build/test_webauthn.obj webauthn.lib user32.lib /OUT:build/test_webauthn.exe
+```
+
+**Important**: Use `/Z7` to embed debug info directly in the `.obj` file instead
+of generating a `.pdb`. This avoids the `mspdbcore.dll` / `mspdbsrv.exe` lookup
+that `cl.exe` does by default, which fails intermittently from Git Bash because
+the PDB server process cannot always be located outside a native VS command prompt.
+
 ## Gotchas and Lessons Learned
 
 1. **Strict Field Initialization**: Windows WebAuthn structures (e.g., `WEBAUTHN_CLIENT_DATA`)
@@ -81,6 +106,11 @@ of the active terminal or IDE.
 3. **Wide Characters**: All Win32 API calls use the `W` (wide-char) variants.
    Internal conversions from UTF-8 `std::string` to `std::wstring` are handled
    via `MultiByteToWideChar`.
+4. **PDB files not needed**: Always compile with `/Z7` (debug info in `.obj`)
+   rather than the default `/Zi` (separate `.pdb`). The PDB server (`mspdbsrv.exe`)
+   is unreliable when invoking `cl.exe` from Git Bash — it relies on DLLs
+   (`mspdbcore.dll`) that are only guaranteed to be found in a native VS Developer
+   Command Prompt environment.
 
 ## Reproducing This Setup
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dotenv-webauthn-crypt"
-version = "0.3.0a5"
+version = "0.3.0a6"
 authors = [
   { name="Jose Luu", email="jose.luu@gmail.com" },
 ]

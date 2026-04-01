@@ -1,0 +1,9 @@
+{
+  "credential_id_b64": "uVC9kYWpyj0ojTORWVZiRIligAjdfIp0WD7InEnDhbI=",
+  "aaguid": "9ddd1817-af5a-4672-a2b9-3e3dd95000a9",
+  "transports": [
+    "internal"
+  ],
+  "authenticator_attachment": "platform",
+  "attestation_format": null
+}

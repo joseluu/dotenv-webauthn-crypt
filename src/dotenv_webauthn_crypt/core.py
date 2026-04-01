@@ -1,8 +1,9 @@
 ﻿import os
+import json
 import base64
 import hashlib
 import struct
-from datetime import datetime
+from datetime import datetime, timezone
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
@@ -16,6 +17,7 @@ from . import _webauthn
 RP_ID = "credentials.dotenv-webauthn.com"
 DATA_DIR = os.path.join(os.environ.get("LOCALAPPDATA", ""), "dotenv-webauthn")
 CREDENTIAL_FILE = os.path.join(DATA_DIR, "credential_id.txt")
+AAGUID_DB_URL = "https://raw.githubusercontent.com/passkeydeveloper/passkey-authenticator-aaguids/main/aaguid.json"
 
 def ensure_data_dir():
     if not os.path.exists(DATA_DIR):
@@ -71,7 +73,7 @@ def _recover_public_key(signature: bytes, authenticator_data: bytes, challenge: 
             return candidate.to_string("uncompressed")
     raise ValueError("No candidate matches the expected y_parity")
 
-def init_credential(user_name: str = "default_user"):
+def init_credential(user_name: str = "default_user", hint: str = ""):
     ensure_data_dir()
     if os.path.exists(CREDENTIAL_FILE):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
@@ -81,32 +83,91 @@ def init_credential(user_name: str = "default_user"):
         print(f"WARNING: Existing credential backed up to {backup_path}")
 
     # Create credential — returns credential_id + authenticatorData (contains public key)
-    result = _webauthn.make_credential(RP_ID, user_name)
+    result = _webauthn.make_credential(RP_ID, user_name, hint)
     credential_id = bytes(result["credential_id"])
     auth_data = bytes(result["authenticator_data"])
+    transport = result.get("transport", "unknown")
+    aaguid = result.get("aaguid", "")
 
     # Extract public key from authenticatorData to determine y_parity
     x, y = _parse_public_key_from_authenticator_data(auth_data)
     y_parity = y[-1] & 1  # last byte's LSB = parity of y coordinate
 
-    # Store credential_id (base64) and y_parity
+    # Map hint back to device name for readability
+    device_map = {"client-device": "local", "hybrid": "phone", "security-key": "usb"}
+    device = device_map.get(hint, hint or "any")
+
+    # Store all metadata as key=value
     encoded = base64.b64encode(credential_id).decode('utf-8')
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     with open(CREDENTIAL_FILE, "w") as f:
-        f.write(f"{encoded}\n{y_parity}\n")
+        f.write(f'CREDENTIAL_ID="{encoded}"\n')
+        f.write(f'Y_PARITY={y_parity}\n')
+        f.write(f'RP_ID="{RP_ID}"\n')
+        f.write(f'USER_NAME="{user_name}"\n')
+        f.write(f'DEVICE="{device}"\n')
+        f.write(f'TRANSPORT="{transport}"\n')
+        f.write(f'AAGUID="{aaguid}"\n')
+        f.write(f'CREATED_AT="{now}"\n')
     print(f"Root credential initialized and saved to {CREDENTIAL_FILE}")
 
 def _read_credential_file():
-    """Read credential_id and y_parity from credential file."""
+    """Read credential metadata from credential file.
+
+    Supports both new key=value format and legacy 2-line format.
+    Returns dict with at least 'credential_id' (bytes) and 'y_parity' (int).
+    """
     if not os.path.exists(CREDENTIAL_FILE):
         raise FileNotFoundError("Root credential not found. Run 'init' first.")
     with open(CREDENTIAL_FILE, "r") as f:
-        lines = f.read().strip().split('\n')
-    credential_id = base64.b64decode(lines[0])
-    y_parity = int(lines[1]) if len(lines) > 1 else 0
-    return credential_id, y_parity
+        content = f.read().strip()
+
+    lines = content.split('\n')
+
+    # Detect format: new format has '=' with key names, old format is raw base64 on line 1
+    if '=' in lines[0]:
+        # New key=value format
+        meta = {}
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            if '=' in line:
+                key, value = line.split('=', 1)
+                # Strip surrounding quotes
+                value = value.strip().strip('"')
+                meta[key.strip()] = value
+        credential_id = base64.b64decode(meta['CREDENTIAL_ID'])
+        y_parity = int(meta.get('Y_PARITY', '0'))
+        return {
+            'credential_id': credential_id,
+            'y_parity': y_parity,
+            'rp_id': meta.get('RP_ID', RP_ID),
+            'user_name': meta.get('USER_NAME', 'unknown'),
+            'device': meta.get('DEVICE', 'unknown'),
+            'transport': meta.get('TRANSPORT', 'unknown'),
+            'aaguid': meta.get('AAGUID', ''),
+            'created_at': meta.get('CREATED_AT', ''),
+        }
+    else:
+        # Legacy 2-line format: line 1 = base64 credential_id, line 2 = y_parity
+        credential_id = base64.b64decode(lines[0])
+        y_parity = int(lines[1]) if len(lines) > 1 else 0
+        return {
+            'credential_id': credential_id,
+            'y_parity': y_parity,
+            'rp_id': RP_ID,
+            'user_name': 'unknown',
+            'device': 'unknown',
+            'transport': 'unknown',
+            'aaguid': '',
+            'created_at': '',
+        }
 
 def get_master_key() -> bytes:
-    credential_id, y_parity = _read_credential_file()
+    meta = _read_credential_file()
+    credential_id = meta['credential_id']
+    y_parity = meta['y_parity']
 
     # Get assertion — user must authenticate (biometric/PIN)
     result = _webauthn.get_assertion(RP_ID, list(credential_id), list(FIXED_CHALLENGE))
@@ -162,8 +223,9 @@ def load_dotenv(dotenv_path: str = ".env"):
     with open(dotenv_path, "r") as f:
         lines = f.readlines()
         for line in lines:
-            if "=" in line:
-                _, value = line.strip().split("=", 1)
+            stripped = line.strip()
+            if stripped and not stripped.startswith('#') and "=" in stripped:
+                _, value = stripped.split("=", 1)
                 if value.startswith("ENC:"):
                     needs_decryption = True
                     break
@@ -171,8 +233,9 @@ def load_dotenv(dotenv_path: str = ".env"):
     if not needs_decryption:
         # Standard load
         for line in lines:
-            if "=" in line:
-                key, value = line.strip().split("=", 1)
+            stripped = line.strip()
+            if stripped and not stripped.startswith('#') and "=" in stripped:
+                key, value = stripped.split("=", 1)
                 os.environ[key] = value
         return
 
@@ -181,8 +244,9 @@ def load_dotenv(dotenv_path: str = ".env"):
     vault_key = get_vault_key(dotenv_path, master_key)
 
     for line in lines:
-        if "=" in line:
-            key, value = line.strip().split("=", 1)
+        stripped = line.strip()
+        if stripped and not stripped.startswith('#') and "=" in stripped:
+            key, value = stripped.split("=", 1)
             if value.startswith("ENC:"):
                 try:
                     os.environ[key] = decrypt_value(value, vault_key)
@@ -193,6 +257,44 @@ def load_dotenv(dotenv_path: str = ".env"):
             else:
                 os.environ[key] = value
 
+def fetch_aaguid_info(aaguid: str) -> dict:
+    """Fetch authenticator info from the passkeydeveloper AAGUID database.
+
+    Returns dict with 'name' and 'icon_light'/'icon_dark' if found, empty dict otherwise.
+    """
+    if not aaguid:
+        return {}
+    try:
+        import urllib.request
+        with urllib.request.urlopen(AAGUID_DB_URL, timeout=10) as resp:
+            db = json.loads(resp.read().decode('utf-8'))
+        return db.get(aaguid, {})
+    except Exception:
+        return {}
+
+
+def get_credential_info() -> dict:
+    """Read credential metadata and return a dict with all stored info."""
+    return _read_credential_file()
+
+
+def _build_recovery_header(meta: dict, env_path: str) -> list:
+    """Build comment lines with credential recovery information."""
+    lines = []
+    lines.append("# --- dotenv-webauthn-crypt recovery info ---\n")
+    lines.append(f'# CREDENTIAL_ID="{base64.b64encode(meta["credential_id"]).decode()}"\n')
+    lines.append(f'# RP_ID="{meta.get("rp_id", RP_ID)}"\n')
+    lines.append(f'# USER_NAME="{meta.get("user_name", "unknown")}"\n')
+    lines.append(f'# DEVICE="{meta.get("device", "unknown")}"\n')
+    lines.append(f'# TRANSPORT="{meta.get("transport", "unknown")}"\n')
+    lines.append(f'# AAGUID="{meta.get("aaguid", "")}"\n')
+    lines.append(f'# CREATED_AT="{meta.get("created_at", "")}"\n')
+    lines.append(f'# ENCRYPTED_AT="{datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}"\n')
+    lines.append(f'# VAULT_PATH="{os.path.abspath(env_path)}"\n')
+    lines.append("# --- end recovery info ---\n")
+    return lines
+
+
 def encrypt_file(dotenv_path: str):
     if not os.path.exists(dotenv_path):
         raise FileNotFoundError(f"{dotenv_path} not found")
@@ -200,19 +302,39 @@ def encrypt_file(dotenv_path: str):
     master_key = get_master_key()
     vault_key = get_vault_key(dotenv_path, master_key)
 
-    new_lines = []
+    # Read existing lines, stripping any old recovery header
+    data_lines = []
     with open(dotenv_path, "r") as f:
+        in_header = False
         for line in f:
-            if "=" in line:
-                key, value = line.strip().split("=", 1)
-                if not value.startswith("ENC:"):
-                    encrypted = encrypt_value(value, vault_key)
-                    new_lines.append(f"{key}={encrypted}\n")
-                else:
-                    new_lines.append(line)
+            if line.startswith("# --- dotenv-webauthn-crypt recovery info ---"):
+                in_header = True
+                continue
+            if in_header:
+                if line.startswith("# --- end recovery info ---"):
+                    in_header = False
+                continue
+            data_lines.append(line)
+
+    # Encrypt values
+    new_lines = []
+    for line in data_lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith('#') and "=" in stripped:
+            key, value = stripped.split("=", 1)
+            if not value.startswith("ENC:"):
+                encrypted = encrypt_value(value, vault_key)
+                new_lines.append(f"{key}={encrypted}\n")
             else:
                 new_lines.append(line)
+        else:
+            new_lines.append(line)
+
+    # Build recovery header from credential metadata
+    meta = _read_credential_file()
+    header = _build_recovery_header(meta, dotenv_path)
 
     with open(dotenv_path, "w") as f:
+        f.writelines(header)
         f.writelines(new_lines)
     print(f"File {dotenv_path} encrypted successfully.")
