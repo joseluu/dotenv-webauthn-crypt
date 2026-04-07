@@ -1,7 +1,7 @@
 #!/bin/bash
 # Build all standalone C++ test executables using MSVC Build Tools.
 # Run from Git Bash:  cd ext && bash build_tests.sh [target]
-# Optional target: hmac_secret | device_info | winrt_cred | all (default: all)
+# Optional target: hmac_secret | device_info | cross_platform | winrt_cred | all (default: all)
 
 set -e
 
@@ -36,6 +36,14 @@ build_device_info() {
     echo "  -> test_device_info.exe"
 }
 
+build_cross_platform() {
+    echo "=== Building test_cross_platform ==="
+    "$CL" $COMMON_CL test_cross_platform.cpp
+    "$LINK" test_cross_platform.obj webauthn.lib user32.lib /OUT:test_cross_platform.exe
+    rm -f test_cross_platform.obj
+    echo "  -> test_cross_platform.exe"
+}
+
 build_winrt_cred() {
     echo "=== Building test_winrt_cred ==="
     # Requires C++/WinRT headers (cppwinrt NuGet or VS workload)
@@ -51,13 +59,16 @@ build_winrt_cred() {
 TARGET="${1:-all}"
 
 case "$TARGET" in
-    hmac_secret)  build_hmac_secret ;;
-    device_info)  build_device_info ;;
-    winrt_cred)   build_winrt_cred ;;
+    hmac_secret)     build_hmac_secret ;;
+    device_info)     build_device_info ;;
+    cross_platform)  build_cross_platform ;;
+    winrt_cred)      build_winrt_cred ;;
     all)
         build_hmac_secret
         echo ""
         build_device_info
+        echo ""
+        build_cross_platform
         echo ""
         build_winrt_cred
         echo ""
@@ -65,7 +76,7 @@ case "$TARGET" in
         ;;
     *)
         echo "Unknown target: $TARGET"
-        echo "Usage: bash build_tests.sh [hmac_secret|device_info|winrt_cred|all]"
+        echo "Usage: bash build_tests.sh [hmac_secret|device_info|cross_platform|winrt_cred|all]"
         exit 1
         ;;
 esac
