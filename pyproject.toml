@@ -1,5 +1,7 @@
 [build-system]
-requires = ["setuptools>=61.0", "pybind11"]
+# pybind11 is only needed to compile the native Windows extension; on other
+# platforms setup.py skips the extension and this dependency is unused.
+requires = ["setuptools>=61.0", "pybind11; platform_system == 'Windows'"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,7 +10,7 @@ version = "0.3.0a7"
 authors = [
   { name="Jose Luu", email="jose.luu@gmail.com" },
 ]
-description = "Drop-in dotenv replacement with Windows Hello encryption."
+description = "Drop-in dotenv replacement with WebAuthn-backed encryption (Windows Hello / fingerprint / security key)."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -20,6 +22,8 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
     "Topic :: Security :: Cryptography",
 ]
 

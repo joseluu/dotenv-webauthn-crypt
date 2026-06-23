@@ -11,7 +11,7 @@ DEVICE_HINTS = {
 }
 
 DEVICE_LABELS = {
-    "local": "Windows Hello (fingerprint/PIN)",
+    "local": "Platform authenticator (fingerprint/PIN)",
     "phone": "Smartphone via QR code (hybrid)",
     "usb": "USB security key (FIDO2)",
 }
@@ -38,16 +38,16 @@ def main():
     parser = argparse.ArgumentParser(description="dotenv-webauthn-crypt CLI")
     parser.add_argument("command", choices=["encrypt", "decrypt", "init", "info", "rekey", "version"])
     parser.add_argument("env_path", nargs="?", default=".env")
-    parser.add_argument("--user", help="User name for init (default: Windows username)",
-                        default=os.environ.get("USERNAME", "default_user"))
+    parser.add_argument("--user", help="User name for init (default: current OS username)",
+                        default=os.environ.get("USERNAME") or os.environ.get("USER", "default_user"))
     parser.add_argument("--device", choices=["local", "phone", "usb"],
                         default=None,
                         help="Authentication device: local (Windows Hello), phone (QR code), usb (security key)")
 
     args = parser.parse_args()
 
-    from . import _webauthn
-    version = _webauthn.get_version()
+    from . import _backend
+    version = _backend.get_version()
     print(f"dotenv-webauthn-crypt v{version}")
 
     if args.command == "version":
@@ -67,7 +67,7 @@ def main():
             _print_credential_info(meta, aaguid_info)
 
         elif args.command == "init":
-            status = _webauthn.get_platform_status()
+            status = _backend.get_platform_status()
             errors = set(status.get('ngc_errors', []))
 
             critical = errors & {"HardwareFailure", "PinExistsFailure"}
@@ -101,11 +101,11 @@ def main():
             if not args.device:
                 print("  Choose an authentication device with --device:\n")
                 if can_local:
-                    print("    --device local   Windows Hello (fingerprint/PIN)")
-                    print("                     Credential stored in the local TPM.")
+                    print("    --device local   Platform authenticator (fingerprint/PIN)")
+                    print("                     Credential stored in the local TPM/secure enclave.")
                     print("                     Fast, no extra hardware needed.\n")
                 else:
-                    print("    --device local   [UNAVAILABLE] Windows Hello not ready.\n")
+                    print("    --device local   [UNAVAILABLE] Platform authenticator not ready.\n")
 
                 if can_phone:
                     print("    --device phone   Smartphone via QR code (hybrid)")

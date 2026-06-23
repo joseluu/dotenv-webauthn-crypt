@@ -4,6 +4,8 @@
 
 `dotenv-webauthn-crypt` is a drop-in replacement for `python-dotenv` that keeps your secrets **encrypted at rest** and gates access behind **WebAuthn (Biometrics/PIN/Phone)**. Your Master Key never exists in plaintext on disk.
 
+Works on **Windows** (native Windows Hello) and on **Linux / macOS / WSL** (via your browser's WebAuthn client — fingerprint, USB security key, or phone).
+
 ##  Features
 
 -   **Seamless Integration**: Use `load_dotenv()` just like you always have.
@@ -16,11 +18,23 @@
 ##  Installation
 
 ### Prerequisites
+
+**Windows**
 -   **Windows 10/11** with Windows Hello enabled (for local authentication).
 -   **Bluetooth + Network** (for phone/QR authentication).
 -   **Visual Studio 2022 Build Tools** (only if building from source).
 
-```powershell
+**Linux / macOS / WSL**
+-   A **web browser** with WebAuthn support (Chrome, Edge, Firefox, …).
+    The library drives the browser to talk to your authenticator — there is no
+    native module to compile, so a plain `pip install` is enough.
+-   An authenticator the browser can reach: a platform authenticator
+    (fingerprint/PIN), a **USB FIDO2 security key**, or a **phone** via QR/hybrid.
+-   Under **WSL**, the Windows browser reaches the helper over `localhost`, so
+    **Windows Hello / your fingerprint reader work from inside Linux** with no
+    extra setup.
+
+```bash
 pip install dotenv-webauthn-crypt
 ```
 
@@ -131,11 +145,38 @@ print(os.environ.get("MY_SECRET_KEY"))
 
 | Device | `--device` | Where key lives | Requirements |
 |--------|-----------|----------------|--------------|
-| Windows Hello | `local` | Local TPM | Windows Hello PIN or biometrics |
+| Platform | `local` | Local TPM / secure enclave | Windows Hello, fingerprint, or PIN |
 | Smartphone | `phone` | Phone | Bluetooth + network connectivity |
 | USB key | `usb` | Security key | FIDO2-compatible USB key |
 
 The `init` command runs pre-flight diagnostics and reports which devices are available. If a device is unavailable, it explains why (e.g., Bluetooth off, no network, no TPM).
+
+## Platform Backends
+
+`dotenv-webauthn-crypt` selects a WebAuthn backend automatically at import time:
+
+-   **Windows** — a native C++ extension (`_webauthn`) calls the system
+    `WebAuthN*` API directly. RP ID: `credentials.dotenv-webauthn.com`.
+-   **Linux / macOS / WSL** — a pure-Python backend (`_browser`) starts a tiny
+    local HTTP server on `http://localhost:8580`, opens your browser, and
+    delegates `navigator.credentials.create()` / `.get()` to the browser's
+    built-in WebAuthn client. RP ID: `localhost`.
+
+Both backends feed the same cryptographic core, so encryption, the recovery
+header, and `load_dotenv()` behave identically.
+
+> **Note — credentials are per-platform.** Because the two backends register
+> under different RP IDs, a credential created on Windows cannot be used by the
+> browser backend and vice-versa. Run `init` once per platform, and encrypt the
+> `.env` with the credential you will decrypt it with.
+
+> **Note — authenticator stability.** The master key is re-derived on every
+> load by recovering the credential's public key from a fresh assertion
+> signature (the key itself is never stored — that is the security guarantee).
+> This requires the authenticator to produce a **stable signature** for the
+> library's fixed challenge, which is the case for platform authenticators
+> (Windows Hello, Touch ID, fingerprint readers) and FIDO2 keys that use
+> deterministic ECDSA with a stable signature counter.
 
 ##  Architecture
 
@@ -152,8 +193,8 @@ The `init` command runs pre-flight diagnostics and reports which devices are ava
 - [x] Platform diagnostics (TPM, Bluetooth, network)
 - [x] Credential metadata and recovery headers
 - [x] AAGUID-based authenticator identification
-- [ ] **Linux Support**: Backend using **TPM2-TSS** or **libfido2**.
-- [ ] **macOS Support**: Backend using **Secure Enclave / Touch ID**.
+- [x] **Linux Support**: browser-driven WebAuthn backend (platform / USB / phone).
+- [x] **macOS Support**: same browser-driven backend (Touch ID via the browser).
 - [ ] **Credential Rotation**: `rekey` command to migrate between hardware credentials.
 
 ## Browser-based WebAuthn Test

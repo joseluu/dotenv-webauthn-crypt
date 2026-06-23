@@ -11,17 +11,31 @@ from cryptography.hazmat.backends import default_backend
 from ecdsa import NIST256p, VerifyingKey
 from ecdsa.util import sigdecode_der
 import cbor2
-from . import _webauthn
+from . import _backend
 
 # Configuration
-RP_ID = "credentials.dotenv-webauthn.com"
-DATA_DIR = os.path.join(os.environ.get("LOCALAPPDATA", ""), "dotenv-webauthn")
+# RP_ID is backend-dependent: the native Windows module uses a custom domain,
+# while the browser backend must use "localhost" (the page's effective origin).
+RP_ID = _backend.RP_ID
+
+
+def _default_data_dir() -> str:
+    """Per-user data directory, following each platform's convention."""
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
+    else:
+        # XDG Base Directory spec, with the documented fallback.
+        base = os.environ.get("XDG_DATA_HOME") or os.path.join(
+            os.path.expanduser("~"), ".local", "share")
+    return os.path.join(base, "dotenv-webauthn")
+
+
+DATA_DIR = _default_data_dir()
 CREDENTIAL_FILE = os.path.join(DATA_DIR, "credential_id.txt")
 AAGUID_DB_URL = "https://raw.githubusercontent.com/passkeydeveloper/passkey-authenticator-aaguids/main/aaguid.json"
 
 def ensure_data_dir():
-    if not os.path.exists(DATA_DIR):
-        os.makedirs(DATA_DIR)
+    os.makedirs(DATA_DIR, exist_ok=True)
 
 FIXED_CHALLENGE = hashlib.sha256(b"dotenv-webauthn-fixed-challenge-v2").digest()
 
@@ -56,13 +70,17 @@ def _parse_public_key_from_authenticator_data(auth_data: bytes) -> tuple:
     y = cose_key[-3]  # y coordinate
     return x, y
 
-def _recover_public_key(signature: bytes, authenticator_data: bytes, challenge: bytes, y_parity: int) -> bytes:
+def _recover_public_key(signature: bytes, authenticator_data: bytes, client_data_hash: bytes, y_parity: int) -> bytes:
     """Recover the ECDSA public key from a WebAuthn assertion signature.
 
     Returns the uncompressed public key bytes (65 bytes: 0x04 || x || y).
     Selects the candidate whose y coordinate parity matches y_parity.
+
+    ``client_data_hash`` is the exact 32-byte hash that the authenticator
+    signed.  It is provided by the backend because it differs per platform:
+    ``SHA256(challenge)`` for the native Windows API, ``SHA256(clientDataJSON)``
+    for the browser backend.
     """
-    client_data_hash = hashlib.sha256(challenge).digest()
     signed_data = authenticator_data + client_data_hash
     candidates = VerifyingKey.from_public_key_recovery(
         signature, signed_data, NIST256p,
@@ -83,7 +101,7 @@ def init_credential(user_name: str = "default_user", hint: str = ""):
         print(f"WARNING: Existing credential backed up to {backup_path}")
 
     # Create credential — returns credential_id + authenticatorData (contains public key)
-    result = _webauthn.make_credential(RP_ID, user_name, hint)
+    result = _backend.make_credential(RP_ID, user_name, hint)
     credential_id = bytes(result["credential_id"])
     auth_data = bytes(result["authenticator_data"])
     transport = result.get("transport", "unknown")
@@ -170,12 +188,13 @@ def get_master_key() -> bytes:
     y_parity = meta['y_parity']
 
     # Get assertion — user must authenticate (biometric/PIN)
-    result = _webauthn.get_assertion(RP_ID, list(credential_id), list(FIXED_CHALLENGE))
+    result = _backend.get_assertion(RP_ID, list(credential_id), list(FIXED_CHALLENGE))
     signature = bytes(result["signature"])
     auth_data = bytes(result["authenticator_data"])
+    client_data_hash = bytes(result["client_data_hash"])
 
     # Recover public key from signature (never stored on disk)
-    pubkey = _recover_public_key(signature, auth_data, bytes(FIXED_CHALLENGE), y_parity)
+    pubkey = _recover_public_key(signature, auth_data, client_data_hash, y_parity)
     return hashlib.sha256(pubkey).digest()
 
 def get_vault_key(env_path: str, master_key: bytes) -> bytes:
