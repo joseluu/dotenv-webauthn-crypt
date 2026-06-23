@@ -13,6 +13,7 @@ backend with a deterministic simulated authenticator.
 """
 
 import os
+import re
 import json
 import base64
 import hashlib
@@ -176,6 +177,55 @@ class TestBrowserRoundTrip(unittest.TestCase):
 
         self.assertEqual(os.environ["DATABASE_URL"], "postgres://user:pw@localhost/db")
         self.assertEqual(os.environ["API_KEY"], "super-secret-123")
+
+
+    def test_recovery_header_has_key_metadata(self):
+        core.init_credential("tester", hint="security-key", key_name="YubiKey bleue")
+        env_path = os.path.join(self.tmpdir, ".env")
+        with open(env_path, "w") as f:
+            f.write("TOKEN=abc\n")
+        core.encrypt_file(env_path)
+
+        with open(env_path) as f:
+            hdr = f.read()
+        self.assertIn('DEVICE="usb"', hdr)
+        self.assertIn('KEY_TYPE="hardware"', hdr)        # usb -> hardware
+        self.assertIn('KEY_NAME="YubiKey bleue"', hdr)
+        self.assertIn('FIRST_ENCRYPTED_AT="', hdr)
+
+    def test_key_name_optional_omitted_from_header(self):
+        core.init_credential("tester", hint="client-device")  # no key_name
+        env_path = os.path.join(self.tmpdir, ".env")
+        with open(env_path, "w") as f:
+            f.write("TOKEN=abc\n")
+        core.encrypt_file(env_path)
+        with open(env_path) as f:
+            hdr = f.read()
+        self.assertNotIn("KEY_NAME=", hdr)
+        self.assertIn('KEY_TYPE="host"', hdr)            # local -> host
+
+    def test_first_encrypted_at_preserved_on_reencrypt(self):
+        core.init_credential("tester", hint="client-device")
+        env_path = os.path.join(self.tmpdir, ".env")
+        with open(env_path, "w") as f:
+            f.write("TOKEN=abc\n")
+        core.encrypt_file(env_path)
+
+        # Force an old initial date, then re-encrypt.
+        old = "2020-01-01T00:00:00Z"
+        with open(env_path) as f:
+            content = f.read()
+        content = re.sub(r'# FIRST_ENCRYPTED_AT=".*?"',
+                         f'# FIRST_ENCRYPTED_AT="{old}"', content)
+        with open(env_path, "w") as f:
+            f.write(content)
+
+        core.encrypt_file(env_path)
+        with open(env_path) as f:
+            lines = f.readlines()
+        # Initial date survives; last-encrypted date is refreshed.
+        self.assertEqual(core._read_header_field(lines, "FIRST_ENCRYPTED_AT"), old)
+        self.assertNotEqual(core._read_header_field(lines, "ENCRYPTED_AT"), old)
 
 
 if __name__ == "__main__":

@@ -24,6 +24,9 @@ def _print_credential_info(meta, aaguid_info=None):
     print(f"  Credential ID : {cred_b64[:40]}...")
     print(f"  Domain (RP_ID): {meta.get('rp_id', 'unknown')}")
     print(f"  User name     : {meta.get('user_name', 'unknown')}")
+    key_name = meta.get('key_name', '')
+    if key_name:
+        print(f"  Key name      : {key_name}")
     device = meta.get('device', 'unknown')
     print(f"  Device        : {device} ({DEVICE_LABELS.get(device, device)})")
     print(f"  Transport     : {meta.get('transport', 'unknown')}")
@@ -43,6 +46,9 @@ def main():
     parser.add_argument("--device", choices=["local", "phone", "usb"],
                         default=None,
                         help="Authentication device: local (Windows Hello), phone (QR code), usb (security key)")
+    parser.add_argument("--name", default="",
+                        help="Optional friendly name for this key (e.g. 'YubiKey bleue'), "
+                             "stored in the credential and the .env recovery header")
 
     args = parser.parse_args()
 
@@ -128,8 +134,10 @@ def main():
 
             hint = DEVICE_HINTS[args.device]
             print(f"  Device: {args.device}")
+            if args.name:
+                print(f"  Key name: {args.name}")
             print()
-            init_credential(args.user, hint=hint)
+            init_credential(args.user, hint=hint, key_name=args.name)
 
         elif args.command == "encrypt":
             encrypt_file(args.env_path)

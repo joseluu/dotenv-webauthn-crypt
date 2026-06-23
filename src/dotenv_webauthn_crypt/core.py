@@ -32,6 +32,14 @@ def _default_data_dir() -> str:
 
 DATA_DIR = _default_data_dir()
 CREDENTIAL_FILE = os.path.join(DATA_DIR, "credential_id.txt")
+
+# Human-readable classification of the authenticator, in the three families the
+# project supports.  Keyed by the internal device name stored at init.
+KEY_TYPE_LABELS = {
+    "local": "host",        # platform authenticator (Windows Hello / Touch ID / fingerprint)
+    "usb": "hardware",      # roaming USB FIDO2 security key
+    "phone": "smartphone",  # phone via QR code / hybrid (BLE + network)
+}
 AAGUID_DB_URL = "https://raw.githubusercontent.com/passkeydeveloper/passkey-authenticator-aaguids/main/aaguid.json"
 
 def ensure_data_dir():
@@ -119,7 +127,7 @@ def _recover_public_key(signature: bytes, authenticator_data: bytes, client_data
             return candidate.to_string("uncompressed")
     raise ValueError("No candidate matches the expected y_parity")
 
-def init_credential(user_name: str = "default_user", hint: str = ""):
+def init_credential(user_name: str = "default_user", hint: str = "", key_name: str = ""):
     ensure_data_dir()
     if os.path.exists(CREDENTIAL_FILE):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
@@ -156,10 +164,13 @@ def init_credential(user_name: str = "default_user", hint: str = ""):
         f.write(f'RP_ID="{RP_ID}"\n')
         f.write(f'USER_NAME="{user_name}"\n')
         f.write(f'DEVICE="{device}"\n')
+        f.write(f'KEY_NAME="{key_name}"\n')
         f.write(f'TRANSPORT="{transport}"\n')
         f.write(f'AAGUID="{aaguid}"\n')
         f.write(f'CREATED_AT="{now}"\n')
-    print(f"Root credential initialized and saved to {CREDENTIAL_FILE}")
+    label = KEY_TYPE_LABELS.get(device, device)
+    named = f' "{key_name}"' if key_name else ""
+    print(f"Root credential{named} initialized ({label}) and saved to {CREDENTIAL_FILE}")
 
 def _read_credential_file():
     """Read credential metadata from credential file.
@@ -196,6 +207,7 @@ def _read_credential_file():
             'rp_id': meta.get('RP_ID', RP_ID),
             'user_name': meta.get('USER_NAME', 'unknown'),
             'device': meta.get('DEVICE', 'unknown'),
+            'key_name': meta.get('KEY_NAME', ''),
             'transport': meta.get('TRANSPORT', 'unknown'),
             'aaguid': meta.get('AAGUID', ''),
             'created_at': meta.get('CREATED_AT', ''),
@@ -211,6 +223,7 @@ def _read_credential_file():
             'rp_id': RP_ID,
             'user_name': 'unknown',
             'device': 'unknown',
+            'key_name': '',
             'transport': 'unknown',
             'aaguid': '',
             'created_at': '',
@@ -270,17 +283,21 @@ def decrypt_value(enc_value: str, vault_key: bytes) -> str:
     aesgcm = AESGCM(vault_key)
     return aesgcm.decrypt(nonce, ciphertext, None).decode('utf-8')
 
-def _read_header_pubkey_tag(lines) -> str:
-    """Extract PUBKEY_TAG from a vault's recovery header, if present.
+def _read_header_field(lines, name: str) -> str:
+    """Extract a single `# NAME="value"` field from a vault's recovery header.
 
-    Lets a vault be decrypted from its own header even if the local credential
-    file lacks the tag (e.g. it predates this feature, or was moved machines).
+    Matches on the exact field name (anchored), so e.g. looking up
+    ``ENCRYPTED_AT`` never accidentally returns ``FIRST_ENCRYPTED_AT``.
     """
     for line in lines:
         stripped = line.strip()
-        if stripped.startswith('#') and 'PUBKEY_TAG=' in stripped:
-            value = stripped.split('PUBKEY_TAG=', 1)[1].strip().strip('"')
-            return value
+        if not stripped.startswith('#'):
+            continue
+        body = stripped[1:].strip()
+        if '=' in body:
+            key, value = body.split('=', 1)
+            if key.strip() == name:
+                return value.strip().strip('"')
     return ""
 
 
@@ -311,7 +328,7 @@ def load_dotenv(dotenv_path: str = ".env"):
         return
 
     # Perform decryption — prefer the tag carried in the file's own header.
-    master_key = get_master_key(pubkey_tag=_read_header_pubkey_tag(lines))
+    master_key = get_master_key(pubkey_tag=_read_header_field(lines, "PUBKEY_TAG"))
     vault_key = get_vault_key(dotenv_path, master_key)
 
     for line in lines:
@@ -349,8 +366,18 @@ def get_credential_info() -> dict:
     return _read_credential_file()
 
 
-def _build_recovery_header(meta: dict, env_path: str) -> list:
-    """Build comment lines with credential recovery information."""
+def _build_recovery_header(meta: dict, env_path: str, first_encrypted_at: str = "") -> list:
+    """Build comment lines with credential recovery information.
+
+    ``first_encrypted_at`` carries the date of the *initial* encryption so it
+    survives re-encryption; when empty (the file's first encryption) it defaults
+    to now.  ``ENCRYPTED_AT`` always reflects the latest encryption.
+    """
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    first = first_encrypted_at or now
+    device = meta.get("device", "unknown")
+    key_type = KEY_TYPE_LABELS.get(device, device)
+
     lines = []
     lines.append("# --- dotenv-webauthn-crypt recovery info ---\n")
     lines.append(f'# CREDENTIAL_ID="{base64.b64encode(meta["credential_id"]).decode()}"\n')
@@ -358,11 +385,16 @@ def _build_recovery_header(meta: dict, env_path: str) -> list:
     lines.append(f'# PUBKEY_TAG="{meta.get("pubkey_tag", "")}"\n')
     lines.append(f'# RP_ID="{meta.get("rp_id", RP_ID)}"\n')
     lines.append(f'# USER_NAME="{meta.get("user_name", "unknown")}"\n')
-    lines.append(f'# DEVICE="{meta.get("device", "unknown")}"\n')
+    lines.append(f'# DEVICE="{device}"\n')
+    lines.append(f'# KEY_TYPE="{key_type}"\n')
+    key_name = meta.get("key_name", "")
+    if key_name:
+        lines.append(f'# KEY_NAME="{key_name}"\n')
     lines.append(f'# TRANSPORT="{meta.get("transport", "unknown")}"\n')
     lines.append(f'# AAGUID="{meta.get("aaguid", "")}"\n')
     lines.append(f'# CREATED_AT="{meta.get("created_at", "")}"\n')
-    lines.append(f'# ENCRYPTED_AT="{datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}"\n')
+    lines.append(f'# FIRST_ENCRYPTED_AT="{first}"\n')
+    lines.append(f'# ENCRYPTED_AT="{now}"\n')
     lines.append(f'# VAULT_PATH="{os.path.abspath(env_path)}"\n')
     lines.append("# --- end recovery info ---\n")
     return lines
@@ -375,19 +407,26 @@ def encrypt_file(dotenv_path: str):
     master_key = get_master_key()
     vault_key = get_vault_key(dotenv_path, master_key)
 
-    # Read existing lines, stripping any old recovery header
-    data_lines = []
     with open(dotenv_path, "r") as f:
-        in_header = False
-        for line in f:
-            if line.startswith("# --- dotenv-webauthn-crypt recovery info ---"):
-                in_header = True
-                continue
-            if in_header:
-                if line.startswith("# --- end recovery info ---"):
-                    in_header = False
-                continue
-            data_lines.append(line)
+        all_lines = f.readlines()
+
+    # Preserve the original encryption date across re-encryptions (fall back to
+    # a pre-existing ENCRYPTED_AT for vaults written before FIRST_ENCRYPTED_AT).
+    first_encrypted_at = (_read_header_field(all_lines, "FIRST_ENCRYPTED_AT")
+                          or _read_header_field(all_lines, "ENCRYPTED_AT"))
+
+    # Strip any old recovery header, keeping the data lines
+    data_lines = []
+    in_header = False
+    for line in all_lines:
+        if line.startswith("# --- dotenv-webauthn-crypt recovery info ---"):
+            in_header = True
+            continue
+        if in_header:
+            if line.startswith("# --- end recovery info ---"):
+                in_header = False
+            continue
+        data_lines.append(line)
 
     # Encrypt values
     new_lines = []
@@ -405,7 +444,7 @@ def encrypt_file(dotenv_path: str):
 
     # Build recovery header from credential metadata
     meta = _read_credential_file()
-    header = _build_recovery_header(meta, dotenv_path)
+    header = _build_recovery_header(meta, dotenv_path, first_encrypted_at)
 
     with open(dotenv_path, "w") as f:
         f.writelines(header)

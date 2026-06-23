@@ -83,8 +83,8 @@ dotenv-webauthn-crypt-cli init --device local
 # Smartphone via QR code — custom user name
 dotenv-webauthn-crypt-cli init --device phone --user MyUser
 
-# USB security key
-dotenv-webauthn-crypt-cli init --device usb
+# USB security key, with an optional friendly name
+dotenv-webauthn-crypt-cli init --device usb --name "YubiKey 5C perso"
 ```
 
 ### 3. Encrypt an existing .env file
@@ -103,13 +103,22 @@ The encrypted file includes a recovery header with credential metadata:
 # RP_ID="credentials.dotenv-webauthn.com"
 # USER_NAME="MyUser"
 # DEVICE="local"
+# KEY_TYPE="host"
+# KEY_NAME="My laptop fingerprint"
 # TRANSPORT="internal"
 # AAGUID="adce0002-35bc-c60a-648b-0b25f1f05503"
 # CREATED_AT="2026-04-02T10:30:00Z"
+# FIRST_ENCRYPTED_AT="2026-04-02T10:31:00Z"
 # ENCRYPTED_AT="2026-04-02T10:31:00Z"
 # VAULT_PATH="C:\Projects\myapp\.env"
 # --- end recovery info ---
 MY_SECRET=ENC:AQ...
+
+The header records a human-readable **`KEY_TYPE`** — `host` (platform
+authenticator), `hardware` (USB security key), or `smartphone` (phone/QR) — an
+optional **`KEY_NAME`** you provide with `--name`, and **`FIRST_ENCRYPTED_AT`**
+(the date of the initial encryption, preserved across re-encryptions) alongside
+`ENCRYPTED_AT` (the most recent one).
 ```
 
 ### 4. Inspect your credential
