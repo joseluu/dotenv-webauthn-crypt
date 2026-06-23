@@ -98,6 +98,8 @@ The encrypted file includes a recovery header with credential metadata:
 ```
 # --- dotenv-webauthn-crypt recovery info ---
 # CREDENTIAL_ID="hnemG/M2FN..."
+# Y_PARITY=1
+# PUBKEY_TAG="9f86d081884c7d65..."
 # RP_ID="credentials.dotenv-webauthn.com"
 # USER_NAME="MyUser"
 # DEVICE="local"
@@ -170,19 +172,25 @@ header, and `load_dotenv()` behave identically.
 > browser backend and vice-versa. Run `init` once per platform, and encrypt the
 > `.env` with the credential you will decrypt it with.
 
-> **Note — authenticator stability.** The master key is re-derived on every
-> load by recovering the credential's public key from a fresh assertion
-> signature (the key itself is never stored — that is the security guarantee).
-> This requires the authenticator to produce a **stable signature** for the
-> library's fixed challenge, which is the case for platform authenticators
-> (Windows Hello, Touch ID, fingerprint readers) and FIDO2 keys that use
-> deterministic ECDSA with a stable signature counter.
+> **Note — public-key recovery & the disambiguation tag.** The master key is
+> re-derived on every load by recovering the credential's public key from a
+> fresh assertion signature (the key itself is never stored — that is the
+> security guarantee). ECDSA recovery yields ~2 candidate keys per signature,
+> so to pick the right one the vault stores a **`PUBKEY_TAG`**:
+> `SHA256(SHA256(pubkey))`. This is deliberately *different* from the master
+> key (`SHA256(pubkey)`) — domain separation means the tag reveals neither the
+> public key nor the master key, yet it identifies the correct candidate in a
+> **single** authentication, even for authenticators that produce randomized
+> signatures or bump their signature counter (typical USB FIDO2 keys). The tag
+> is written both to the credential file and into the encrypted file's recovery
+> header, so a vault is self-sufficient and portable. Older vaults with only
+> `Y_PARITY` still load on deterministic authenticators (Windows Hello).
 
 ##  Architecture
 
 1.  **Registration**: `init` creates a non-resident public/private key pair on the chosen authenticator. The `CredentialID` and metadata (AAGUID, transport, device, user, timestamp) are saved locally.
 2.  **Encryption**: A `VaultKey` is derived using HKDF from an authenticator-backed signature and the file's canonical path. A recovery header with credential metadata is prepended to the encrypted file.
-3.  **Loading**: `load_dotenv` skips comment lines (`#`), detects `ENC:` prefixes, triggers authentication to get a fresh signature, re-derives the `VaultKey`, and decrypts the values into `os.environ`.
+3.  **Loading**: `load_dotenv` skips comment lines (`#`), detects `ENC:` prefixes, triggers authentication to get a fresh signature, recovers the public key (using `PUBKEY_TAG` to select the right candidate), re-derives the `MasterKey` and `VaultKey`, and decrypts the values into `os.environ`.
 4.  **Info**: `info` reads the credential metadata and queries the [AAGUID database](https://github.com/passkeydeveloper/passkey-authenticator-aaguids) to identify the authenticator model.
 
 ##  TODO / Roadmap

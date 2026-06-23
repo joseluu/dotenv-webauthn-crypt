@@ -86,14 +86,14 @@ class SimulatedAuthenticator:
             "crossOrigin": False,
         }, separators=(",", ":")).encode()
         client_data_hash = hashlib.sha256(client_data_json).digest()
-        # Real platform authenticators (Windows Hello, FIDO2 keys) use
-        # deterministic ECDSA (RFC 6979) and a stable signCount, so the
-        # signature is identical for a fixed challenge.  The library relies on
-        # that stability to recover the same public key every time, so the test
-        # authenticator must behave the same way.
-        signature = self.sk.sign_deterministic(auth_data + client_data_hash,
-                                                hashfunc=hashlib.sha256,
-                                                sigencode=sigencode_der)
+        # Use RANDOMIZED ECDSA (a fresh k each call), the worst case for public
+        # key recovery: each signature yields a different decoy candidate.  The
+        # PUBKEY_TAG disambiguation must still recover the correct key every
+        # time and in a single assertion.  (A real key may also bump signCount;
+        # randomizing the signature is a strictly harder test.)
+        signature = self.sk.sign(auth_data + client_data_hash,
+                                 hashfunc=hashlib.sha256,
+                                 sigencode=sigencode_der)
         return {
             "signature": list(signature),
             "authenticator_data": list(auth_data),
@@ -116,10 +116,42 @@ class TestBrowserRoundTrip(unittest.TestCase):
 
     def test_master_key_is_stable_across_assertions(self):
         core.init_credential("tester", hint="client-device")
-        k1 = core.get_master_key()
-        k2 = core.get_master_key()
-        self.assertEqual(k1, k2)
-        self.assertEqual(len(k1), 32)
+        # With randomized signatures, parity alone would flip ~half the time;
+        # the PUBKEY_TAG must keep the master key constant across many taps.
+        keys = {core.get_master_key() for _ in range(20)}
+        self.assertEqual(len(keys), 1)
+        self.assertEqual(len(next(iter(keys))), 32)
+
+    def test_pubkey_tag_is_not_the_master_key(self):
+        """The stored tag must be domain-separated from SHA256(pubkey)."""
+        core.init_credential("tester", hint="client-device")
+        meta = core._read_credential_file()
+        master_key = core.get_master_key()
+        stored_tag = base64.b64decode(meta["pubkey_tag"])
+        self.assertNotEqual(stored_tag, master_key)
+        # The tag is the double hash of the same public key the master key uses.
+        self.assertEqual(stored_tag, hashlib.sha256(master_key).digest())
+
+    def test_decrypt_from_header_without_credential_file(self):
+        """A vault carries its own PUBKEY_TAG and decrypts without Y_PARITY/tag
+        in the credential file (e.g. moved to another machine)."""
+        core.init_credential("tester", hint="client-device")
+        env_path = os.path.join(self.tmpdir, ".env")
+        with open(env_path, "w") as f:
+            f.write("TOKEN=abc123\n")
+        core.encrypt_file(env_path)
+
+        # Wipe the local tag/parity so only the header can disambiguate.
+        with open(core.CREDENTIAL_FILE) as f:
+            cred = f.read()
+        cred = "\n".join(l for l in cred.splitlines()
+                         if not l.startswith(("PUBKEY_TAG", "Y_PARITY")))
+        with open(core.CREDENTIAL_FILE, "w") as f:
+            f.write(cred + "\n")
+
+        os.environ.pop("TOKEN", None)
+        core.load_dotenv(env_path)
+        self.assertEqual(os.environ["TOKEN"], "abc123")
 
     def test_encrypt_then_load_roundtrip(self):
         core.init_credential("tester", hint="client-device")

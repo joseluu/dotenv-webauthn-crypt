@@ -70,11 +70,32 @@ def _parse_public_key_from_authenticator_data(auth_data: bytes) -> tuple:
     y = cose_key[-3]  # y coordinate
     return x, y
 
-def _recover_public_key(signature: bytes, authenticator_data: bytes, client_data_hash: bytes, y_parity: int) -> bytes:
+def _pubkey_tag(pubkey: bytes) -> str:
+    """Disambiguation tag for a public key, stored to pick the right candidate.
+
+    It is SHA256(SHA256(pubkey)) — deliberately *different* from the master key
+    derivation (which is SHA256(pubkey)).  This domain separation is critical:
+    storing SHA256(pubkey) would be storing the encryption key itself.  The
+    double hash is preimage-resistant, so the tag reveals neither the public key
+    nor the master key, yet it uniquely identifies the correct recovery
+    candidate from a single assertion — even when the authenticator produces
+    randomized (non-deterministic) signatures.
+    """
+    return base64.b64encode(hashlib.sha256(hashlib.sha256(pubkey).digest()).digest()).decode()
+
+
+def _recover_public_key(signature: bytes, authenticator_data: bytes, client_data_hash: bytes,
+                        y_parity: int, pubkey_tag: str = "") -> bytes:
     """Recover the ECDSA public key from a WebAuthn assertion signature.
 
     Returns the uncompressed public key bytes (65 bytes: 0x04 || x || y).
-    Selects the candidate whose y coordinate parity matches y_parity.
+
+    A single assertion yields ~2 recovery candidates (the real key plus a decoy
+    that is valid only for *this* signature).  Selection:
+      * if ``pubkey_tag`` is provided, pick the candidate whose tag matches —
+        robust even for randomized signatures (works in a single tap); else
+      * fall back to ``y_parity`` (legacy: only reliable when the authenticator
+        signs deterministically, e.g. Windows Hello).
 
     ``client_data_hash`` is the exact 32-byte hash that the authenticator
     signed.  It is provided by the backend because it differs per platform:
@@ -86,6 +107,13 @@ def _recover_public_key(signature: bytes, authenticator_data: bytes, client_data
         signature, signed_data, NIST256p,
         hashfunc=hashlib.sha256, sigdecode=sigdecode_der
     )
+    if pubkey_tag:
+        for candidate in candidates:
+            uncompressed = candidate.to_string("uncompressed")
+            if _pubkey_tag(uncompressed) == pubkey_tag:
+                return uncompressed
+        raise ValueError("No recovery candidate matches the stored public-key tag "
+                         "(wrong credential or corrupted metadata).")
     for candidate in candidates:
         if candidate.pubkey.point.y() % 2 == y_parity:
             return candidate.to_string("uncompressed")
@@ -107,9 +135,12 @@ def init_credential(user_name: str = "default_user", hint: str = ""):
     transport = result.get("transport", "unknown")
     aaguid = result.get("aaguid", "")
 
-    # Extract public key from authenticatorData to determine y_parity
+    # Extract public key from authenticatorData. We keep y_parity for backward
+    # compatibility, and derive the disambiguation tag used at decryption time.
     x, y = _parse_public_key_from_authenticator_data(auth_data)
     y_parity = y[-1] & 1  # last byte's LSB = parity of y coordinate
+    uncompressed_pubkey = b'\x04' + x + y  # same encoding as VerifyingKey.to_string("uncompressed")
+    pubkey_tag = _pubkey_tag(uncompressed_pubkey)
 
     # Map hint back to device name for readability
     device_map = {"client-device": "local", "hybrid": "phone", "security-key": "usb"}
@@ -121,6 +152,7 @@ def init_credential(user_name: str = "default_user", hint: str = ""):
     with open(CREDENTIAL_FILE, "w") as f:
         f.write(f'CREDENTIAL_ID="{encoded}"\n')
         f.write(f'Y_PARITY={y_parity}\n')
+        f.write(f'PUBKEY_TAG="{pubkey_tag}"\n')
         f.write(f'RP_ID="{RP_ID}"\n')
         f.write(f'USER_NAME="{user_name}"\n')
         f.write(f'DEVICE="{device}"\n')
@@ -160,6 +192,7 @@ def _read_credential_file():
         return {
             'credential_id': credential_id,
             'y_parity': y_parity,
+            'pubkey_tag': meta.get('PUBKEY_TAG', ''),
             'rp_id': meta.get('RP_ID', RP_ID),
             'user_name': meta.get('USER_NAME', 'unknown'),
             'device': meta.get('DEVICE', 'unknown'),
@@ -174,6 +207,7 @@ def _read_credential_file():
         return {
             'credential_id': credential_id,
             'y_parity': y_parity,
+            'pubkey_tag': '',
             'rp_id': RP_ID,
             'user_name': 'unknown',
             'device': 'unknown',
@@ -182,10 +216,14 @@ def _read_credential_file():
             'created_at': '',
         }
 
-def get_master_key() -> bytes:
+def get_master_key(pubkey_tag: str = "") -> bytes:
     meta = _read_credential_file()
     credential_id = meta['credential_id']
     y_parity = meta['y_parity']
+    # Prefer a tag supplied by the caller (e.g. from the .env recovery header,
+    # which makes the vault self-sufficient), otherwise use the one stored
+    # alongside the credential.
+    tag = pubkey_tag or meta.get('pubkey_tag', '')
 
     # Get assertion — user must authenticate (biometric/PIN)
     result = _backend.get_assertion(RP_ID, list(credential_id), list(FIXED_CHALLENGE))
@@ -194,7 +232,7 @@ def get_master_key() -> bytes:
     client_data_hash = bytes(result["client_data_hash"])
 
     # Recover public key from signature (never stored on disk)
-    pubkey = _recover_public_key(signature, auth_data, client_data_hash, y_parity)
+    pubkey = _recover_public_key(signature, auth_data, client_data_hash, y_parity, tag)
     return hashlib.sha256(pubkey).digest()
 
 def get_vault_key(env_path: str, master_key: bytes) -> bytes:
@@ -232,6 +270,20 @@ def decrypt_value(enc_value: str, vault_key: bytes) -> str:
     aesgcm = AESGCM(vault_key)
     return aesgcm.decrypt(nonce, ciphertext, None).decode('utf-8')
 
+def _read_header_pubkey_tag(lines) -> str:
+    """Extract PUBKEY_TAG from a vault's recovery header, if present.
+
+    Lets a vault be decrypted from its own header even if the local credential
+    file lacks the tag (e.g. it predates this feature, or was moved machines).
+    """
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('#') and 'PUBKEY_TAG=' in stripped:
+            value = stripped.split('PUBKEY_TAG=', 1)[1].strip().strip('"')
+            return value
+    return ""
+
+
 def load_dotenv(dotenv_path: str = ".env"):
     if not os.path.exists(dotenv_path):
         return
@@ -258,8 +310,8 @@ def load_dotenv(dotenv_path: str = ".env"):
                 os.environ[key] = value
         return
 
-    # Perform decryption
-    master_key = get_master_key()
+    # Perform decryption — prefer the tag carried in the file's own header.
+    master_key = get_master_key(pubkey_tag=_read_header_pubkey_tag(lines))
     vault_key = get_vault_key(dotenv_path, master_key)
 
     for line in lines:
@@ -302,6 +354,8 @@ def _build_recovery_header(meta: dict, env_path: str) -> list:
     lines = []
     lines.append("# --- dotenv-webauthn-crypt recovery info ---\n")
     lines.append(f'# CREDENTIAL_ID="{base64.b64encode(meta["credential_id"]).decode()}"\n')
+    lines.append(f'# Y_PARITY={meta.get("y_parity", 0)}\n')
+    lines.append(f'# PUBKEY_TAG="{meta.get("pubkey_tag", "")}"\n')
     lines.append(f'# RP_ID="{meta.get("rp_id", RP_ID)}"\n')
     lines.append(f'# USER_NAME="{meta.get("user_name", "unknown")}"\n')
     lines.append(f'# DEVICE="{meta.get("device", "unknown")}"\n')
